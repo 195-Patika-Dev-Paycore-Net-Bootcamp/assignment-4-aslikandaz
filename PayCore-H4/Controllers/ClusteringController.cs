@@ -25,60 +25,61 @@ namespace PayCore_H4.Controllers
 
         [HttpPost("Cluster")]
 
-        public IActionResult Cluster(long vehicleId, int numberOfClusters)
+        public IActionResult Cluster(long vehicleId, int clusterAmount)
         {
-            var ContanerList = _session.Entites.Where(x => x.VehicleId == vehicleId).ToArray();
-            var dataArray = ContanerList.Select((x) => (X: x.Latitude, Y: x.Longitude)).ToArray();
-            var Containers = dataArray.Select(n => new double[] { (double)n.X, (double)n.Y }).ToArray();
+            var ContanerList = _session.Entites.Where(x => x.VehicleId == vehicleId).ToArray(); // gelen vehicleId ye ait containerların listelenmesi
+            var dataArray = ContanerList.Select((x) => (X: x.Latitude, Y: x.Longitude)).ToArray(); // veritabanından çekilen containerların lat ve long değerlerinin çekilmesi
+            var Containers = dataArray.Select(n => new double[] { (double)n.X, (double)n.Y }).ToArray(); // array haline getirilen verilerden bir dizi oluşturulması
 
 
-            var random = new Random(5555);
+            var random = new Random(5555); // rastgele sayı üreteci
             
             var responseList = Enumerable
-                                    .Range(0, Containers.Length)
-                                    .Select(index => (AssignedCluster: random.Next(0, numberOfClusters),
+                                    .Range(0, Containers.Length) //kaç satır verimiz varsa o kadar sayı üretiyotuz
+                                    .Select(index => (AssignedCluster: random.Next(0, clusterAmount),//her satıra önce rastgele bir küme numarası ardından değerler atıyoruz
                                                   Values: Containers[index]))
                                     .ToList();
 
             var DimensionNumber = Containers[0].Length;
-            var limit = 10000;
-            var Update = true;
+            var limit = 10000; //algoritmaynın eşik(max iterasyon) değeri
+            var Update = true; // döngüyü sonlandıracak değişken
 
-            while (--limit > 0)
+            while (--limit > 0) // döngü limit 0'a eşit olana kadar devam edecek
             {
-                 
-                    var CentreSpots = Enumerable.Range(0, numberOfClusters)
-                        .AsParallel()
-                        .Select(kumeNumarasi =>
+                var CentreSpots = Enumerable.Range(0, clusterAmount)//arzu edilen küme sayısı kadar sayı üretiyoruz
+                        .AsParallel() //gelen döngünün multithread çalışmasını sağlıyoruz
+                        .Select(numberOfCluster =>// her küme için merkez nokta hesaplıyoruz
                             (
-                                kume: kumeNumarasi,
-                                merkezNokta: Enumerable.Range(0, DimensionNumber)
-                                    .Select(pivot => responseList.Where(s => s.AssignedCluster == kumeNumarasi)
-                                        .Average(s => s.Values[pivot]))
+                            cluster: numberOfCluster,
+                                centreSpot: Enumerable.Range(0, DimensionNumber) //verideki boyut sayısı kadar sayı oluşturuyoruz
+                                    .Select(pivot => responseList.Where(s => s.AssignedCluster == numberOfCluster)
+                                        .Average(s => s.Values[pivot])) // ilgili kümeye atanmış verilerin ilgili eksenindeki değerlerin ortalamasını alıyoruz
                                     .ToArray())
                         ).ToArray();
 
+
                     Update = false;
                     
-                    Parallel.For(0, responseList.Count, i =>
+                    // en yakın merkez noktaya göre yeniden atama yapılıyor
+                    Parallel.For(0, responseList.Count, i => ////for (int i = 0; i < responseList.Count; i++)
                     {
-                        var Line = responseList[i];
-                        var FormerCluster = Line.AssignedCluster;
+                        var Line = responseList[i]; // mevcut veri tutuluyor
+                        var FormerCluster = Line.AssignedCluster; // bu satır için bir önceki atanan küme tutuluyor
 
-                        var RecentCluster = CentreSpots.Select(n => (KumeNumarasi: n.kume,
-                                Uzaklik: DistanceCalculation(Line.Values, n.merkezNokta)))
-                            .OrderBy(x => x.Uzaklik)
+                        var RecentCluster = CentreSpots.Select(n => (clusterNumber:n.cluster, // her merkez noktayı tek tek dönüp line değerine uzaklığı en az olanı seçiyoruz
+                                Distance: DistanceCalculation(Line.Values, n.centreSpot)))
+                            .OrderBy(x => x.Distance)
                             .First()
-                            .KumeNumarasi;
+                            .clusterNumber;
 
-                        if (RecentCluster != FormerCluster)
+                        if (RecentCluster != FormerCluster) // yeni atanacak küme eskisiyle aynı değilse güncelliyoruz ve güncellemeyi true yaparal döngüyü sonlandırıyoruz
                         {
                             responseList[i] = (AssignedCluster: RecentCluster, Values: Line.Values);
                             Update = true;
                         }
                     });
 
-                    if (!Update)
+                    if (!Update) // hiçbir güncelleme olmadıysa büyük döngüyü sonlandırıyoruz
                     {
                         break;
                     }
@@ -94,12 +95,12 @@ namespace PayCore_H4.Controllers
             return Ok(response);
         }
 
-        private double DistanceCalculation(double[] FirstPoint, double[] SecondPoint)
+        private double DistanceCalculation(double[] FirstPoint, double[] SecondPoint) //iki adet n elemanlı vektör parametre alıyor ve öklid formülü uygulanıyor
         {
             var SquaredDistance = FirstPoint
-                .Zip(SecondPoint,
-                    (p1, p2) => Math.Pow(p1 - p2, 2)).Sum();
-            return Math.Sqrt(SquaredDistance);
+                .Zip(SecondPoint, // iki adet dizinin sırayla elemanları dönülüyor. değer çiftleri olarak dönüş yapılıyor
+                    (p1, p2) => Math.Pow(p1 - p2, 2)).Sum(); // her bir eksendeki değerleri sırasıyla alıp birbirinden çıkarıp sonucun karesini alıyoruz daha sonra tüm bu farkların genel toplamını alıyoruz
+            return Math.Sqrt(SquaredDistance); //kareli toplamın karekökünü dönüyoruz
         }
     }
 }
