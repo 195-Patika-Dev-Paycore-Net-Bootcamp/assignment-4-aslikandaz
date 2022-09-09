@@ -4,6 +4,7 @@ using NHibernate.Cfg.MappingSchema;
 using NHibernate.Dialect;
 using NHibernate.Mapping.ByCode;
 using PayCore_H4.Context;
+using PayCore_H4.Model;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,7 +40,7 @@ namespace PayCore_H4.StartUpExtension
 
 
             // inject
-            services.AddScoped<IMapperSession, MapperSession>();
+            services.AddScoped<IMapperSession<Container>, MapperSession>();
 
             return services;
         }
